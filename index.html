@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestión de Clientes</title>
+
+<style>
+body{
+    margin:0;
+    font-family: 'Segoe UI', sans-serif;
+    background: linear-gradient(135deg,#1e1e2f,#2c3e50);
+    color:white;
+}
+header{
+    padding:15px;
+    text-align:center;
+    font-size:22px;
+    font-weight:bold;
+}
+button{
+    cursor:pointer;
+    border:none;
+    padding:8px 14px;
+    border-radius:8px;
+    font-weight:bold;
+    margin:4px 2px;
+}
+.btn-primary{background:#3498db;color:white;}
+.btn-success{background:#2ecc71;color:white;}
+.btn-danger{background:#e74c3c;color:white;}
+.btn-secondary{background:#7f8c8d;color:white;}
+.container{padding:15px;}
+.card{
+    background:#2c3e50;
+    margin-bottom:10px;
+    padding:12px;
+    border-radius:12px;
+    box-shadow:0 5px 15px rgba(0,0,0,0.3);
+}
+.led{
+    width:12px;height:12px;border-radius:50%;
+    display:inline-block;margin-right:4px;
+    background:#555;
+}
+.led.active{background:#00ff88;box-shadow:0 0 6px #00ff88;}
+.modal{
+    position:fixed;
+    top:0;left:0;width:100%;height:100%;
+    background:rgba(0,0,0,0.6);
+    display:none;
+    justify-content:center;
+    align-items:center;
+}
+.modal-content{
+    background:#1f2b38;
+    padding:20px;
+    width:95%;
+    max-width:500px;
+    border-radius:12px;
+    max-height:90vh;
+    overflow:auto;
+}
+input, textarea{
+    width:100%;
+    padding:8px;
+    margin-bottom:10px;
+    border-radius:8px;
+    border:none;
+}
+h3{
+    border-bottom:1px solid #444;
+    padding-bottom:5px;
+}
+@media(min-width:768px){
+    .container{max-width:900px;margin:auto;}
+}
+</style>
+<link type="text/css" rel="stylesheet" href="css/style.css"/>
+</head>
+<body>
+
+<header>Gestión de Clientes</header>
+
+<div class="container">
+<button class="btn-primary" onclick="startWizard()">+ Nuevo Cliente</button>
+
+<h3>Trabajos Pendientes</h3>
+<div id="listaPendientes"></div>
+
+<h3>Trabajos Realizados</h3>
+<div id="listaRealizados"></div>
+</div>
+
+<div class="modal" id="modal"></div>
+
+<script>
+let clientes = JSON.parse(localStorage.getItem("clientes")) || [];
+let wizardData = {};
+let wizardStep = 0;
+
+function guardar(){
+    localStorage.setItem("clientes", JSON.stringify(clientes));
+    render();
+}
+
+function render(){
+    let pendientes = clientes.filter(c=>!c.completado);
+    let realizados = clientes.filter(c=>c.completado);
+
+    pendientes.sort((a,b)=> new Date(a.entrega) - new Date(b.entrega));
+
+    let listaPendientes = document.getElementById("listaPendientes");
+    let listaRealizados = document.getElementById("listaRealizados");
+
+    listaPendientes.innerHTML="";
+    listaRealizados.innerHTML="";
+
+    pendientes.forEach((c,i)=>{
+        let leds="";
+        for(let j=1;j<=5;j++){
+            leds+=`<span class="led ${c.estado>=j?'active':''}"></span>`;
+        }
+        listaPendientes.innerHTML+=`
+        <div class="card">
+            <b>${c.nombre}</b> - ${c.titulo}<br>
+            Entrega: ${c.entrega}<br>
+            ${leds}
+            <br>
+            <button class="btn-secondary" onclick="verCliente(${clientes.indexOf(c)})">Ver</button>
+        </div>`;
+    });
+
+    realizados.forEach((c,i)=>{
+        listaRealizados.innerHTML+=`
+        <div class="card">
+            <b>${c.nombre}</b> - ${c.titulo}<br>
+            Entregado: ${c.entrega}<br>
+            <button class="btn-success" onclick="verCliente(${clientes.indexOf(c)})">Ver</button>
+        </div>`;
+    });
+}
+render();
+
+function startWizard(){
+    wizardData={};
+    wizardStep=0;
+    nextStep();
+}
+
+const preguntas=[
+    {label:"Nombre del cliente", key:"nombre"},
+    {label:"Teléfono", key:"telefono"},
+    {label:"Título del trabajo", key:"titulo"},
+    {label:"Descripción completa", key:"descripcion", textarea:true},
+    {label:"Costo", key:"costo", type:"number"},
+    {label:"Fecha de entrega", key:"entrega", type:"date"}
+];
+
+function nextStep(){
+    if(wizardStep>0){
+        let value=document.getElementById("inputWizard").value;
+        if(!value) return alert("Debe completar el campo.");
+        wizardData[preguntas[wizardStep-1].key]=value;
+    }
+    if(wizardStep===preguntas.length){
+        wizardData.creado=new Date().toISOString().split('T')[0];
+        wizardData.estado=0;
+        wizardData.completado=false;
+        clientes.push(wizardData);
+        guardar();
+        closeModal();
+        return;
+    }
+    let p=preguntas[wizardStep];
+    document.getElementById("modal").style.display="flex";
+    document.getElementById("modal").innerHTML=`
+    <div class="modal-content">
+        <h3>${p.label}</h3>
+        ${p.textarea?
+        `<textarea id="inputWizard"></textarea>`:
+        `<input id="inputWizard" type="${p.type||'text'}">`}
+        <button class="btn-primary" onclick="wizardStep++;nextStep()">Siguiente</button>
+    </div>`;
+}
+
+function verCliente(i){
+    let c=clientes[i];
+    let estados="";
+    for(let j=1;j<=5;j++){
+        estados+=`<button class="btn-primary" ${c.estado+1===j?'':'disabled'} onclick="cambiarEstado(${i},${j})">${j}</button>`;
+    }
+
+    let botonListo = (c.estado===5 && !c.completado) ?
+    `<button class="btn-success" onclick="marcarListo(${i})">LISTO</button>` : "";
+
+    document.getElementById("modal").style.display="flex";
+    document.getElementById("modal").innerHTML=`
+    <div class="modal-content">
+        <h2>${c.nombre}</h2>
+        <b>Tel:</b> ${c.telefono}<br>
+        <b>Título:</b> ${c.titulo}<br>
+        <b>Descripción:</b><br>${c.descripcion}<br>
+        <b>Costo:</b> ${c.costo}<br>
+        <b>Creado:</b> ${c.creado}<br>
+        <b>Entrega:</b> ${c.entrega}<br><br>
+        ${estados}
+        <br>
+        ${botonListo}
+        <br>
+        <button class="btn-danger" onclick="eliminar(${i})">Eliminar</button>
+        <button class="btn-secondary" onclick="closeModal()">Cerrar</button>
+    </div>`;
+}
+
+function cambiarEstado(i,estado){
+    clientes[i].estado=estado;
+    guardar();
+    verCliente(i);
+}
+
+function marcarListo(i){
+    clientes[i].completado=true;
+    guardar();
+    closeModal();
+}
+
+function eliminar(i){
+    let motivo=prompt("Escriba el motivo:");
+    if(!motivo) return;
+    let codigo=prompt("Ingrese código:");
+    if(codigo==="17771"){
+        clientes.splice(i,1);
+        guardar();
+        closeModal();
+    }else{
+        alert("Código incorrecto");
+    }
+}
+
+function closeModal(){
+    document.getElementById("modal").style.display="none";
+}
+</script>
+
+<script type="text/javascript" src="js/script.js"></script>
+</body>
+</html>
